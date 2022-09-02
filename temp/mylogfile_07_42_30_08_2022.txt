@@ -1,0 +1,1 @@
+bot logged in <ks_api_client.ks_api.KSTradeApi object at 0x000001EA993D85B0>
