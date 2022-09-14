@@ -7,7 +7,8 @@ from ks_api_client import ks_api
 from datetime import date
 from datetime import datetime
 from nsepython import *
-
+import sys
+#sys.setrecursionlimit(-1)
 
 
 today = date.today()
@@ -15,7 +16,15 @@ d1 = today.strftime("%d%b%y")
 d1=d1.upper()
 print("Today's date:", d1.upper())
 
-import sys
+
+class recursion_depth:
+    def __init__(self, limit):
+        self.limit = limit
+        self.default_limit = sys.getrecursionlimit()
+    def __enter__(self):
+        sys.setrecursionlimit(self.limit)
+    def __exit__(self, type, value, traceback):
+        sys.setrecursionlimit(self.default_limit)
 #sys.stdout = open('logfile', 'w')
 class Tee(object):
     def __init__(self, *files):
@@ -185,20 +194,21 @@ def check_stoploss():
                     print("Error",e)
             time.sleep(creds.sl_count)
 def main():
-    print("main")
-    def take_response():
-         from datetime import datetime
-         import time
-         now= datetime.now()
-         dt_string = now.strftime("%H:%M:%S")
-         print(dt_string)
-         time.sleep(1)
-         if(str(dt_string)==str(creds.check_time)):
-             st=datetime.now()
-             place_kotak_orders()
-             print("module ran in",st-now)
-             exit()
-         else:
-            take_response()
-    take_response()
+    with recursion_depth(100000):
+        print("main")
+        def take_response():
+            from datetime import datetime
+            import time
+            now= datetime.now()
+            dt_string = now.strftime("%H:%M:%S")
+            print(dt_string)
+            time.sleep(1)
+            if(str(dt_string)==str(creds.check_time)):
+                st=datetime.now()
+                place_kotak_orders()
+                print("module ran in",st-now)
+                exit()
+            else:
+                take_response()
+        take_response()
 main()

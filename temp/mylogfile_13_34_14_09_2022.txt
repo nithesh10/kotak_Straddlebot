@@ -1,0 +1,3 @@
+bot logged in <ks_api_client.ks_api.KSTradeApi object at 0x000001C5A13AF850>
+nearest expiry 29SEP22
+11721
