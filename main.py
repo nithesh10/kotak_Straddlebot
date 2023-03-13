@@ -8,6 +8,7 @@ from datetime import date
 from datetime import datetime
 from nsepython import *
 import sys
+import nse_fno_expiry_calculator as nf
 #sys.setrecursionlimit(-1)
 
 
@@ -98,6 +99,9 @@ print("bot logged in",client)
 
 
 def token_info():
+    today=nf.getNearestWeeklyExpiryDate()
+    d1 = today.strftime("%d%b%y")
+    d1=d1.upper()
     url =  'https://tradeapi.kotaksecurities.com/apim/scripmaster/1.1/filename'
     headers = {'accept' : 'application/json', 'consumerKey' : creds.CONSUMER_KEY, 'Authorization':f'Bearer {creds.ACCESS_TOKEN}'}
     res = requests.get(url,headers=headers).json()
@@ -110,14 +114,17 @@ def token_info():
     creds.token_info= df[((df["instrumentName"]==("BANKNIFTY")) | (df["instrumentName"]==("NIFTY")))]
     #creds.token_info.to_excel("tokens.xlsx")
     dff=creds.token_info[creds.token_info["instrumentName"]=="NIFTY"]
-    creds.expiry=dff['expiry'].iat[0]
+    creds.expiry=str(d1)
     print("nearest expiry",creds.expiry)
     dfz=cashdf
     creds.index_info= dfz[((dfz["instrumentName"]==("NIFTY 50")) | (dfz["instrumentName"]==("NIFTY BANK")))]
     dff=creds.index_info
     creds.nifty_token_instrument=dff['instrumentToken'].iat[0]
     creds.bank_nifty_token_instrument=dff['instrumentToken'].iat[1]
+
     print(creds.nifty_token_instrument)
+    #print('today is '+str(datetime.datetime.now().date()))
+    #print('nearest weekly exp is '+str(d1))
 
 token_info()
 
@@ -142,20 +149,31 @@ def place_kotak_orders():
     print(creds.avg_price_nifty_ce)
     print(creds.avg_price_nifty_pe)
     try:
-        ord_id=client.place_order(order_type = 'N', instrument_token = int(creds.nifty_ce_token_instrument), transaction_type = "SELL",\
+        ord_id=client.place_order(order_type = creds.order_type, instrument_token = int(creds.nifty_ce_token_instrument), transaction_type = "SELL",\
                    quantity = creds.quantity, price = 0, disclosed_quantity = 0, trigger_price = 0,\
                    tag = "string", validity = "GFD", variety = "REGULAR")
-        client.place_order(order_type = 'N', instrument_token = int(creds.nifty_pe_token_instrument), transaction_type = "SELL",\
-                   quantity = creds.quantity, price = 0, disclosed_quantity = 0, trigger_price = 0,\
-                   tag = "string", validity = "GFD", variety = "REGULAR")
+        creds.call=1
         print(ord_id,"Success")
         print("ORDER_ID",ord_id["Success"]["NSE"]["orderId"])
-        
-        check_stoploss()
     except Exception as e:
         print("Error",e)
-        #check_stoploss()
-        
+        #pass
+    try:
+        client.place_order(order_type = creds.order_type, instrument_token = int(creds.nifty_pe_token_instrument), transaction_type = "SELL",\
+                   quantity = creds.quantity, price = 0, disclosed_quantity = 0, trigger_price = 0,\
+                   tag = "string", validity = "GFD", variety = "REGULAR")
+        creds.put=1
+        print(ord_id,"Success")
+        print("ORDER_ID",ord_id["Success"]["NSE"]["orderId"])
+
+        check_stoploss()
+    except Exception as e:
+        #creds.call=1
+        #creds.put=0
+        print("Error",e)
+        #pass
+    check_stoploss()
+
 
     #creds.placed_orders.append(myorder["order_id"])
 def check_stoploss():
@@ -166,30 +184,64 @@ def check_stoploss():
             now= datetime.now()
             dt_string = now.strftime("%H:%M:%S")
             print(dt_string)
-            quote=client.quote(instrument_token = int(creds.nifty_ce_token_instrument))
-            ltp=quote["success"][0]["ltp"]
-            print("ltp",ltp,"avg_price",creds.avg_price_nifty_ce)
-            print("% p/l",(double(creds.avg_price_nifty_ce)-double(ltp))*100/double(creds.avg_price_nifty_ce))
-            if((double(creds.avg_price_nifty_ce)-double(ltp))*100/double(creds.avg_price_nifty_ce)<=creds.percent_sl):
+            end_time = creds.end_time
+            if (datetime.now().hour * 60 + datetime.now().minute) >= end_time:
+                print( "Trading day closed, time is above stop_time")
+                if( creds.call==1):
+                    try:
+                        ord_id=client.place_order(order_type = creds.order_type, instrument_token = int(creds.nifty_ce_token_instrument), transaction_type = "BUY",\
+                        quantity = creds.quantity, price = 0, disclosed_quantity = 0, trigger_price = 0,\
+                        tag = "string", validity = "GFD", variety = "REGULAR")
+                        print(ord_id)
+                        creds.call=0
+
+                    except Exception as e:
+                        pass
+                        print("Error",e)
+                if(creds.put==1):
+                    try:
+                        ord_id=client.place_order(order_type = creds.order_type, instrument_token = int(creds.nifty_ce_token_instrument), transaction_type = "BUY",\
+                        quantity = creds.quantity, price = 0, disclosed_quantity = 0, trigger_price = 0,\
+                        tag = "string", validity = "GFD", variety = "REGULAR")
+                        print(ord_id)
+                        creds.put=0
+                    except Exception as e:
+                        pass
+                        print("Error",e)
+                exit()
+            try:
+                quote=client.quote(instrument_token = int(creds.nifty_ce_token_instrument))
+                ltp=quote["success"][0]["ltp"]
+            except:
+                print("exception in fetching price details")
+            if(creds.call==1):
+                print("ltp",ltp,"avg_price",creds.avg_price_nifty_ce)
+                print("% p/l",(double(creds.avg_price_nifty_ce)-double(ltp))*100/double(creds.avg_price_nifty_ce))
+            if((double(creds.avg_price_nifty_ce)-double(ltp))*100/double(creds.avg_price_nifty_ce)<=creds.percent_sl) and creds.call==1:
                 try:
-                    ord_id=client.place_order(order_type = 'N', instrument_token = int(creds.nifty_ce_token_instrument), transaction_type = "BUY",\
+                    ord_id=client.place_order(order_type = creds.order_type, instrument_token = int(creds.nifty_ce_token_instrument), transaction_type = "BUY",\
                     quantity = creds.quantity, price = 0, disclosed_quantity = 0, trigger_price = 0,\
                     tag = "string", validity = "GFD", variety = "REGULAR")
                     print(ord_id)
-                    exit()
+                    creds.call=0
+
                 except Exception as e:
                     print("Error",e)
-            bn_quote=client.quote(instrument_token = int(creds.nifty_pe_token_instrument))
-            ltp=bn_quote["success"][0]["ltp"]
-            print("ltp",ltp,"avg_price",creds.avg_price_nifty_pe)
-            print("% p/l",(double(creds.avg_price_nifty_pe)-double(ltp))*100/double(creds.avg_price_nifty_pe))
-            if((double(creds.avg_price_nifty_ce)-double(ltp))*100/double(creds.avg_price_nifty_ce)<=creds.percent_sl):
+            try:
+                bn_quote=client.quote(instrument_token = int(creds.nifty_pe_token_instrument))
+                ltp=bn_quote["success"][0]["ltp"]
+            except:
+                print("exception in fetching price details")
+            if(creds.put==1):
+                print("ltp",ltp,"avg_price",creds.avg_price_nifty_pe)
+                print("% p/l",(double(creds.avg_price_nifty_pe)-double(ltp))*100/double(creds.avg_price_nifty_pe))
+            if((double(creds.avg_price_nifty_ce)-double(ltp))*100/double(creds.avg_price_nifty_ce)<=creds.percent_sl) and creds.put==1:
                 try:
-                    ord_id=client.place_order(order_type = 'N', instrument_token = int(creds.nifty_ce_token_instrument), transaction_type = "BUY",\
+                    ord_id=client.place_order(order_type = creds.order_type, instrument_token = int(creds.nifty_ce_token_instrument), transaction_type = "BUY",\
                     quantity = creds.quantity, price = 0, disclosed_quantity = 0, trigger_price = 0,\
                     tag = "string", validity = "GFD", variety = "REGULAR")
                     print(ord_id)
-                    exit()
+                    creds.put=0
                 except Exception as e:
                     print("Error",e)
             time.sleep(creds.sl_count)
@@ -199,16 +251,16 @@ def main():
         def take_response():
             from datetime import datetime
             import time
-            now= datetime.now()
+            now= datetime.now().time()
             dt_string = now.strftime("%H:%M:%S")
-            print(dt_string)
-            time.sleep(1)
-            if(str(dt_string)==str(creds.check_time)):
-                st=datetime.now()
-                place_kotak_orders()
-                print("module ran in",st-now)
-                exit()
-            else:
-                take_response()
+            chktime = datetime.strptime(creds.check_time,'%H:%M:%S').time()
+            remtime=(datetime.combine(date.today(), chktime) - datetime.combine(date.today(), now)).total_seconds()
+            print("time to counter",datetime.combine(date.today(), chktime) - datetime.combine(date.today(), now))
+            print("sleeping for",remtime)
+            time.sleep(remtime)
+            st=datetime.now()
+            place_kotak_orders()
+            #else:
+            #    take_response()
         take_response()
 main()
